@@ -1,4 +1,4 @@
-# ReMarkable templates PDF
+# ReMarkable templates from PDF
 
 Copy PDF files to ReMarkable tablet as templates.
 
