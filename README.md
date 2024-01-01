@@ -28,7 +28,11 @@ sudo apt install imagemagick pdf2svg jq sshpass
 
 Place your PDF files in the `templates` directory.
 
-Copy the `.env.example` file and replace values with correct informations.
+Copy the `.env.example` file to `.env` and edit it to set your ReMarkable tablet IP address and password.
+
+```bash
+cp .env.example .env
+```
 
 In order to retrieve password and IP address, on your ReMarkable tablet, go to `Settings > General > About` and click on the `Copyrights and licenses`.
 
