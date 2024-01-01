@@ -42,7 +42,8 @@ if ! [ -x "$(command -v pdf2svg)" ]; then
 fi
 
 # Ensure at least on PDF file exists in templates directory
-if ! [ -f templates/*.pdf ]; then
+count=$(ls templates/*.pdf | wc -l)
+if [ $count -eq 0 ]; then
   echo 'Error: No PDF files found in templates directory.' >&2
   exit 1
 fi
@@ -145,15 +146,13 @@ done
 echo "Backuping original templates.json as templates.json.bak on the device"
 # check if .bak already exists
 exists=$(sshpass -p $password ssh $user@$ip "test -f $destination/templates.json.bak && echo 1 || echo 0")
-if [ $exists -eq 1 ]; then
-    # if it exists, remove it
-    sshpass -p $password ssh $user@$ip "rm $destination/templates.json.bak"
+if [ $exists -eq 0 ]; then
+    if [ "$dryRun" == "false" ]; then
+        # backup templates.json
+        sshpass -p $password ssh $user@$ip "cp $destination/templates.json $destination/templates.json.bak"
+    fi
 fi
 
-if [ "$dryRun" == "false" ]; then
-    # backup templates.json
-    sshpass -p $password ssh $user@$ip "cp $destination/templates.json $destination/templates.json.bak"
-fi
 
 # Update templates.json on the device
 echo "Updating templates.json on the device"
@@ -168,10 +167,12 @@ else
 fi
 
 # Clean up
-if [ -f templates/*.svg ]; then
+count=$(ls templates/*.svg | wc -l)
+if [ $count -gt 0 ]; then
     rm -f templates/*.svg
 fi
-if [ -f templates/*.png ]; then
+count=$(ls templates/*.png | wc -l)
+if [ $count -gt 0 ]; then
     rm -f templates/*.png
 fi
 if [ -f templates/templates.json ]; then

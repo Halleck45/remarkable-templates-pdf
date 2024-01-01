@@ -34,7 +34,7 @@ In order to retrieve password and IP address, on your ReMarkable tablet, go to `
 Then run the script:
 
 ```bash
-./remarkable-templates-pdf.sh
+./remarkable-templates-pdf
 ```
 
 You can use the `--dry-run` option to see what will be done. Images and JSON files will be moved to `/tmp/test` directory on the ReMarkable tablet.
