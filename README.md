@@ -1,11 +1,12 @@
 # ReMarkable templates PDF
 
-Copy PDF files as template to ReMarkable tablet. 
+Copy PDF files to ReMarkable tablet as templates.
 
-This script convert PDF files to SVG and PNG and send them to ReMarkable tablet.
+This script will convert PDF files to PNG images and JSON files, then copy them to the ReMarkable tablet via SSH.
 
 > **Be careful, please backup your ReMarkable tablet before using this script.**
 > **This script is provided as is, without any warranty, and can break your ReMarkable tablet.**
+> I've tested it on my ReMarkable tablet, and it works fine, but I can't guarantee it will work on yours.
 
 ## Requirements
 
