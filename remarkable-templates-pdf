@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Load ip, user and password from .env file
+if [ -f .env ]; then
+    export $(cat .env | sed 's/#.*//g' | xargs)
+fi
+
+# Check if each variable is set
+if [ -z "$ip" ]; then
+    echo "Error: ip is not set." >&2
+    exit 1
+fi
+if [ -z "$user" ]; then
+    echo "Error: user is not set." >&2
+    exit 1
+fi
+if [ -z "$password" ]; then
+    echo "Error: password is not set." >&2
+    exit 1
+fi
+destination="/usr/share/remarkable/templates/"
+
+# if --dry-run is passed, change destination to /tmp/test
+dryRun="false"
+if [ "$1" == "--dry-run" ]; then
+    dryRun="true"
+    destination="/tmp/test"
+fi
+
+# Ensure jq is installed
+if ! [ -x "$(command -v jq)" ]; then
+  echo 'Error: jq is not installed.' >&2
+  exit 1
+fi
+
+# Ensure pdf2svg is installed
+if ! [ -x "$(command -v pdf2svg)" ]; then
+  echo 'Error: pdf2svg is not installed.' >&2
+  exit 1
+fi
+
+# Ensure at least on PDF file exists in templates directory
+if ! [ -f templates/*.pdf ]; then
+  echo 'Error: No PDF files found in templates directory.' >&2
+  exit 1
+fi
+
+# Ensure convert is installed
+if ! [ -x "$(command -v convert)" ]; then
+  echo 'Error: convert is not installed.' >&2
+  exit 1
+fi
+
+# Ensure sshpass is installed
+if ! [ -x "$(command -v sshpass)" ]; then
+  echo 'Error: sshpass is not installed.' >&2
+  exit 1
+fi
+
+# Ensure remote device is reachable
+if ! ping -c 1 $ip &> /dev/null; then
+    echo "Error: Device $ip is not reachable." >&2
+    exit 1
+fi
+
+
+# if dry-run, ensure destination folder exists
+if [ "$dryRun" == "true" ]; then
+    echo "Dry run, creating destination folder $destination"
+    sshpass -p $password ssh $user@$ip "mkdir -p $destination"
+fi
+
+
+# List of available icons
+icons=(
+    "\\ue9c0"
+    "\\ue9d3"
+    "\\ue9b7"
+    "\\ue9a7"
+    "\\ue9a8"
+    "\\ue9a9"
+)
+currentIcon=0
+
+# list PDF files in templates directory
+pdfs=$(ls templates/*.pdf)
+
+# parse list of templates in templates-default.json
+templates=$(cat templates-default.json | jq -r '.templates')
+# Ensure string like \ue9c0 are not escaped
+templates=$(echo $templates | sed 's/\\//g')
+
+
+# Copy templates-default.json to templates.json
+cp templates-default.json templates/templates.json
+
+# for each PDF file
+for pdf in $pdfs; do
+    filename=$(basename $pdf .pdf)
+
+    echo "- Processing $filename"
+
+    # search if there is a matching item in templates-default.json, in the templates attribute
+    template=$(jq --arg filename $filename '.templates[] | select(. == $filename)' <<< cat templates-default.json)
+
+    # if there is a matching item
+    if [ -n "$template" ]; then
+        echo "    [SKIP] $filename is already in template.json"
+    else
+
+        # Extract PDF to PNG
+        gs -sDEVICE=pnggray -o templates/$filename.png -r600 $pdf
+        convert templates/$filename.png -density 226 -units pixelsperinch templates/$filename.png
+        convert templates/$filename.png -resize "1404x1872" templates/$filename.png
+
+        # Extract the first page of the PDF file into SVG
+        echo "    [EXTRACT] $filename.svg from $filename.pdf"
+        pdf2svg $pdf templates/$filename.svg 1
+
+        echo "    [ADD] $filename to templates.json"
+        name=$(basename $pdf .pdf)
+        icon=${icons[$currentIcon]}
+        currentIcon=$((currentIcon+1))
+        if [ $currentIcon -eq ${#icons[@]} ]; then
+            currentIcon=0
+        fi
+
+        cat templates/templates.json | jq --ascii-output ".templates += [{\"name\": \"$filename\", \"filename\": \"$name\", \"iconCode\": \"$icon\", \"categories\": [\"Custom\"]}]" > /tmp/templates.json
+        mv /tmp/templates.json templates/templates.json
+
+        # Copy SVG and PNG to the remote destination folder
+        echo "    [COPY] $filename.svg and $filename.png to $destination"
+        sshpass -p $password scp templates/$filename.svg $user@$ip:$destination/$filename.svg
+        sshpass -p $password scp templates/$filename.png $user@$ip:$destination/$filename.png
+
+        # Inform the user
+        echo "    [OK]"
+        echo
+    fi
+done
+
+# Backuping original templates.json
+echo "Backuping original templates.json as templates.json.bak on the device"
+# check if .bak already exists
+exists=$(sshpass -p $password ssh $user@$ip "test -f $destination/templates.json.bak && echo 1 || echo 0")
+if [ $exists -eq 1 ]; then
+    # if it exists, remove it
+    sshpass -p $password ssh $user@$ip "rm $destination/templates.json.bak"
+fi
+
+if [ "$dryRun" == "false" ]; then
+    # backup templates.json
+    sshpass -p $password ssh $user@$ip "cp $destination/templates.json $destination/templates.json.bak"
+fi
+
+# Update templates.json on the device
+echo "Updating templates.json on the device"
+sshpass -p $password scp templates/templates.json $user@$ip:$destination/templates.json
+
+# Restart xochitl
+if [ "$dryRun" == "true" ]; then
+    echo "Dry run, not restarting xochitl"
+else
+    echo "Restarting xochitl. Your device will reboot."
+    sshpass -p $password ssh $user@$ip "systemctl restart xochitl"
+fi
+
+# Clean up
+if [ -f templates/*.svg ]; then
+    rm -f templates/*.svg
+fi
+if [ -f templates/*.png ]; then
+    rm -f templates/*.png
+fi
+if [ -f templates/templates.json ]; then
+    rm -f templates/templates.json
+fi
+
+echo
+echo "Done"
